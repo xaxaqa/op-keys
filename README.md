@@ -8,3 +8,12 @@
     close = true,
     description = 'Keys for your vehicle'
 },
+```
+### Event to give key.
+```lua
+TriggerServerEvent('op-carlock:givekey', plate)
+```
+### Event to remove key.
+```lua
+TriggerServerEvent('op-carlock:removekey', plate)
+```
