@@ -1,5 +1,13 @@
 ESX = exports["es_extended"]:getSharedObject()
 
+local function Notify(src, message, type)
+    if Config.Notify == 'ox' then
+        TriggerClientEvent('ox_lib:notify', src, {description = message, type = type or 'inform'})
+    else
+        ESX.GetPlayerFromId(src).showNotification(message)
+    end
+end
+
 RegisterServerEvent('op-carlock:toggleLock')
 AddEventHandler('op-carlock:toggleLock', function(plate, netId)
     local src = source
@@ -10,16 +18,16 @@ AddEventHandler('op-carlock:toggleLock', function(plate, netId)
     if not veh then return end
 
     MySQL.query('SELECT 1 FROM owned_vehicles WHERE plate = ? AND owner = ?', {plate, xPlayer.identifier}, function(result)
-        if not result[1] then return xPlayer.showNotification('~o~Not your car!~s~') end
+        if not result[1] then return Notify(src, 'Not your car!', 'error') end
 
         local hasKey = exports.ox_inventory:Search(src, 'count', 'carkeys', {plate = plate}) > 0
-        if not hasKey then return xPlayer.showNotification('~o~No keys!~s~') end
+        if not hasKey then return Notify(src, 'No keys!', 'error') end
 
         local locked = GetVehicleDoorLockStatus(veh) == 2
         local newState = locked and 1 or 2
         SetVehicleDoorsLocked(veh, newState)
-        TriggerClientEvent('op-carlock:playEffects', src, veh, newState)
-        xPlayer.showNotification(locked and '~g~Unlocked~s~' or '~r~Locked~s~')
+        TriggerClientEvent('op-carlock:playEffects', -1, netId, newState)
+        Notify(src, locked and 'Unlocked' or 'Locked', locked and 'success' or 'error')
     end)
 end)
 
@@ -32,7 +40,7 @@ AddEventHandler('op-carlock:givekey', function(plate)
     exports.ox_inventory:RemoveItem(src, 'carkeys', 99)
     
     if exports.ox_inventory:AddItem(src, 'carkeys', 1, {plate = plate, description = 'Keys for '..plate}) then
-        xPlayer.showNotification('~g~Keys received~s~ for ~y~'..plate)
+        Notify(src, 'Keys received for '..plate, 'success')
     end
 end)
 
@@ -55,5 +63,5 @@ AddEventHandler('op-carlock:removekey', function(plate)
         end
     end
     
-    xPlayer.showNotification(removed > 0 and ('~r~Keys removed~s~ for ~y~'..plate) or ('~o~No keys found~s~ for ~y~'..plate))
+    Notify(src, removed > 0 and ('Keys removed for '..plate) or ('No keys found for '..plate), removed > 0 and 'error' or 'inform')
 end)
