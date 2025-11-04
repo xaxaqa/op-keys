@@ -1,67 +1,74 @@
 ESX = exports["es_extended"]:getSharedObject()
+local cache = {}
 
-local function Notify(src, message, type)
+local function Notify(src, msg, type)
     if Config.Notify == 'ox' then
-        TriggerClientEvent('ox_lib:notify', src, {description = message, type = type or 'inform'})
+        TriggerClientEvent('ox_lib:notify', src, { description = msg, type = type })
     else
-        ESX.GetPlayerFromId(src).showNotification(message)
+        ESX.GetPlayerFromId(src).showNotification(msg)
     end
 end
+
+AddEventHandler('playerDropped', function()
+    local src = source
+    for k in pairs(cache) do
+        if k:match('^' .. src .. ':') then cache[k] = nil end
+    end
+end)
 
 RegisterServerEvent('op-carlock:toggleLock')
 AddEventHandler('op-carlock:toggleLock', function(plate, netId)
     local src = source
-    local xPlayer = ESX.GetPlayerFromId(src)
-    if not xPlayer then return end
-    
+    local p = ESX.GetPlayerFromId(src)
+    if not p then return end
     local veh = NetworkGetEntityFromNetworkId(netId)
     if not veh then return end
 
-    MySQL.query('SELECT 1 FROM owned_vehicles WHERE plate = ? AND owner = ?', {plate, xPlayer.identifier}, function(result)
-        if not result[1] then return Notify(src, 'Not your car!', 'error') end
+    local key = src .. ':' .. plate
+    local owned = cache[key]
+    if owned == false then return Notify(src, 'Not your car!', 'error') end
+    if owned ~= true then
+        local row = MySQL.single.await('SELECT 1 FROM owned_vehicles WHERE plate = ? AND owner = ? LIMIT 1',
+            { plate, p.identifier })
+        cache[key] = row and true or false
+        if not row then return Notify(src, 'Not your car!', 'error') end
+    end
 
-        local hasKey = exports.ox_inventory:Search(src, 'count', 'carkeys', {plate = plate}) > 0
-        if not hasKey then return Notify(src, 'No keys!', 'error') end
+    if exports.ox_inventory:Search(src, 'count', 'carkeys', { plate = plate }) == 0 then
+        return Notify(src, 'No keys!', 'error')
+    end
 
-        local locked = GetVehicleDoorLockStatus(veh) == 2
-        local newState = locked and 1 or 2
-        SetVehicleDoorsLocked(veh, newState)
-        TriggerClientEvent('op-carlock:playEffects', -1, netId, newState)
-        Notify(src, locked and 'Unlocked' or 'Locked', locked and 'success' or 'error')
-    end)
+    local locked = GetVehicleDoorLockStatus(veh) == 2
+    local new = locked and 1 or 2
+    SetVehicleDoorsLocked(veh, new)
+    TriggerClientEvent('op-carlock:playEffects', -1, netId, new)
+    Notify(src, locked and 'Unlocked' or 'Locked', locked and 'success' or 'error')
 end)
 
 RegisterNetEvent('op-carlock:givekey')
 AddEventHandler('op-carlock:givekey', function(plate)
     local src = source
-    local xPlayer = ESX.GetPlayerFromId(src)
-    if not xPlayer then return end
-    
+    local p = ESX.GetPlayerFromId(src)
+    if not p then return end
     exports.ox_inventory:RemoveItem(src, 'carkeys', 99)
-    
-    if exports.ox_inventory:AddItem(src, 'carkeys', 1, {plate = plate, description = 'Keys for '..plate}) then
-        Notify(src, 'Keys received for '..plate, 'success')
+    if exports.ox_inventory:AddItem(src, 'carkeys', 1, { plate = plate, description = 'Keys for ' .. plate }) then
+        Notify(src, 'Keys received for ' .. plate, 'success')
+        cache[src .. ':' .. plate] = true
     end
 end)
 
 RegisterNetEvent('op-carlock:removekey')
 AddEventHandler('op-carlock:removekey', function(plate)
     local src = source
-    local xPlayer = ESX.GetPlayerFromId(src)
-    if not xPlayer then return end
-    
+    local p = ESX.GetPlayerFromId(src)
+    if not p then return end
     local removed = 0
-    local items = exports.ox_inventory:Search(src, 'slots', 'carkeys')
-    
-    if items then
-        for _, item in pairs(items) do
-            if item.metadata and item.metadata.plate == plate then
-                if exports.ox_inventory:RemoveItem(src, 'carkeys', 1, item.metadata, item.slot) then
-                    removed = removed + 1
-                end
-            end
+    for _, v in pairs(exports.ox_inventory:Search(src, 'slots', 'carkeys') or {}) do
+        if v.metadata and v.metadata.plate == plate and exports.ox_inventory:RemoveItem(src, 'carkeys', 1, v.metadata, v.slot) then
+            removed = removed + 1
         end
     end
-    
-    Notify(src, removed > 0 and ('Keys removed for '..plate) or ('No keys found for '..plate), removed > 0 and 'error' or 'inform')
+    if removed > 0 then cache[src .. ':' .. plate] = nil end
+    Notify(src, removed > 0 and 'Keys removed for ' .. plate or 'No keys found for ' .. plate,
+        removed > 0 and 'error' or 'inform')
 end)
