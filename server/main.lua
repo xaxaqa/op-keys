@@ -24,18 +24,33 @@ AddEventHandler('op-carlock:toggleLock', function(plate, netId)
     local veh = NetworkGetEntityFromNetworkId(netId)
     if not veh then return end
 
+    if exports.ox_inventory:Search(src, 'count', 'carkeys', { plate = plate }) == 0 then
+        return Notify(src, 'No keys!', 'error')
+    end
+
     local key = src .. ':' .. plate
     local owned = cache[key]
     if owned == false then return Notify(src, 'Not your car!', 'error') end
     if owned ~= true then
-        local row = MySQL.single.await('SELECT 1 FROM owned_vehicles WHERE plate = ? AND owner = ? LIMIT 1',
-            { plate, p.identifier })
-        cache[key] = row and true or false
-        if not row then return Notify(src, 'Not your car!', 'error') end
-    end
+        local row = MySQL.single.await([[
+            SELECT owner, job, jobGrade, jobLocked
+            FROM owned_vehicles
+            WHERE plate = ? LIMIT 1
+        ]], { plate })
 
-    if exports.ox_inventory:Search(src, 'count', 'carkeys', { plate = plate }) == 0 then
-        return Notify(src, 'No keys!', 'error')
+        if not row then return Notify(src, 'Vehicle not registered!', 'error') end
+
+        local isPersonal = row.owner and row.owner == p.identifier
+        local isJob = false
+
+        if row.job and row.jobLocked == 'true' then
+            isJob = p.job.name == row.job and p.job.grade >= (row.jobGrade or 0)
+        end
+
+        cache[key] = (isPersonal or isJob) and true or false
+        if not (isPersonal or isJob) then
+            return Notify(src, 'Not your car!', 'error')
+        end
     end
 
     local locked = GetVehicleDoorLockStatus(veh) == 2
