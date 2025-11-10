@@ -1,6 +1,5 @@
 ESX = exports["es_extended"]:getSharedObject()
 local cache = {}
-
 local function Notify(src, msg, type)
     if Config.Notify == 'ox' then
         TriggerClientEvent('ox_lib:notify', src, { description = msg, type = type })
@@ -8,14 +7,12 @@ local function Notify(src, msg, type)
         ESX.GetPlayerFromId(src).showNotification(msg)
     end
 end
-
 AddEventHandler('playerDropped', function()
     local src = source
     for k in pairs(cache) do
         if k:match('^' .. src .. ':') then cache[k] = nil end
     end
 end)
-
 RegisterServerEvent('op-carlock:toggleLock')
 AddEventHandler('op-carlock:toggleLock', function(plate, netId)
     local src = source
@@ -23,11 +20,9 @@ AddEventHandler('op-carlock:toggleLock', function(plate, netId)
     if not p then return end
     local veh = NetworkGetEntityFromNetworkId(netId)
     if not veh then return end
-
     if exports.ox_inventory:Search(src, 'count', 'carkeys', { plate = plate }) == 0 then
         return Notify(src, 'No keys!', 'error')
     end
-
     local key = src .. ':' .. plate
     local owned = cache[key]
     if owned == false then return Notify(src, 'Not your car!', 'error') end
@@ -37,29 +32,24 @@ AddEventHandler('op-carlock:toggleLock', function(plate, netId)
             FROM owned_vehicles
             WHERE plate = ? LIMIT 1
         ]], { plate })
-
         if not row then return Notify(src, 'Vehicle not registered!', 'error') end
-
         local isPersonal = row.owner and row.owner == p.identifier
         local isJob = false
-
         if row.job and row.jobLocked == 'true' then
             isJob = p.job.name == row.job and p.job.grade >= (row.jobGrade or 0)
         end
-
         cache[key] = (isPersonal or isJob) and true or false
         if not (isPersonal or isJob) then
             return Notify(src, 'Not your car!', 'error')
         end
     end
-
     local locked = GetVehicleDoorLockStatus(veh) == 2
     local new = locked and 1 or 2
     SetVehicleDoorsLocked(veh, new)
     TriggerClientEvent('op-carlock:playEffects', -1, netId, new)
+    TriggerClientEvent('op-carlock:playAnimation', src, netId)
     Notify(src, locked and 'Unlocked' or 'Locked', locked and 'success' or 'error')
 end)
-
 RegisterNetEvent('op-carlock:givekey')
 AddEventHandler('op-carlock:givekey', function(plate)
     local src = source
@@ -71,7 +61,6 @@ AddEventHandler('op-carlock:givekey', function(plate)
         cache[src .. ':' .. plate] = true
     end
 end)
-
 RegisterNetEvent('op-carlock:removekey')
 AddEventHandler('op-carlock:removekey', function(plate)
     local src = source
